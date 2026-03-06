@@ -1,0 +1,691 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sports Calendar</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400;1,700&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0c0c10;
+      --surface: #15151e;
+      --surface2: #1e1e2a;
+      --surface3: #272736;
+      --border: rgba(255,255,255,0.07);
+      --border2: rgba(255,255,255,0.12);
+      --text: #eeeef8;
+      --text-muted: #7777a0;
+      --text-dim: #4a4a6a;
+
+      --spurs: #1a3166;
+      --spurs-glow: rgba(26,49,102,0.4);
+      --wrexham: #cc0000;
+      --wrexham-glow: rgba(204,0,0,0.3);
+      --f1: #e8002d;
+      --f1-glow: rgba(232,0,45,0.25);
+
+      --badge-pl: #38003c;
+      --badge-pl-text: #e0aaff;
+      --badge-ucl: #001489;
+      --badge-ucl-text: #93c5fd;
+      --badge-fa: #990000;
+      --badge-fa-text: #fca5a5;
+      --badge-eflc: #145214;
+      --badge-eflc-text: #86efac;
+      --badge-champ: #1c1c3a;
+      --badge-champ-text: #a5b4fc;
+      --badge-race: #7a0018;
+      --badge-race-text: #ffa0ae;
+      --badge-qual: #4a1a00;
+      --badge-qual-text: #fdba74;
+      --badge-practice: #1a1a1a;
+      --badge-practice-text: #aaaacc;
+      --badge-sprint: #3a1a6a;
+      --badge-sprint-text: #c4b5fd;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Space Mono', monospace;
+      min-height: 100vh;
+      line-height: 1.4;
+    }
+
+    /* ── Header ─────────────────────────────────────────────── */
+    header {
+      background: rgba(21,21,30,0.95);
+      border-bottom: 1px solid var(--border);
+      padding: 1rem 2rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+    }
+
+    .wordmark {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      font-size: 1.05rem;
+      font-weight: 700;
+      letter-spacing: -0.025em;
+      color: var(--text);
+    }
+
+    .wordmark-icon {
+      width: 28px; height: 28px;
+      background: linear-gradient(135deg, var(--spurs) 50%, var(--f1) 50%);
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.75rem;
+      font-weight: 800;
+      color: white;
+    }
+
+    .header-meta { display: flex; align-items: center; gap: 1rem; }
+
+    .last-updated { font-size: 0.72rem; color: var(--text-dim); }
+
+    .refresh-btn {
+      background: var(--surface2);
+      border: 1px solid var(--border2);
+      border-radius: 6px;
+      padding: 0.3rem 0.65rem;
+      color: var(--text-muted);
+      font-size: 0.75rem;
+      cursor: pointer;
+      transition: all 0.15s;
+      font-family: inherit;
+    }
+    .refresh-btn:hover { background: var(--surface3); color: var(--text); }
+
+    /* ── Filter Bar ─────────────────────────────────────────── */
+    .filter-bar {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 0.75rem 2rem;
+      display: flex;
+      gap: 0.4rem;
+      overflow-x: auto;
+      scrollbar-width: none;
+      -ms-overflow-style: none;
+    }
+    .filter-bar::-webkit-scrollbar { display: none; }
+
+    .sep { width: 1px; background: var(--border2); margin: 0 0.25rem; flex-shrink: 0; }
+
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      padding: 0.3rem 0.8rem;
+      border-radius: 100px;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--text-muted);
+      font-size: 0.78rem;
+      font-weight: 500;
+      cursor: pointer;
+      white-space: nowrap;
+      flex-shrink: 0;
+      transition: all 0.15s;
+      font-family: inherit;
+    }
+    .chip:hover { background: var(--surface2); color: var(--text); border-color: var(--border2); }
+    .chip.active { color: white; border-color: transparent; }
+    .chip[data-f="all"].active     { background: var(--surface3); border-color: var(--border2); }
+    .chip[data-f="spurs"].active   { background: var(--spurs); }
+    .chip[data-f="wrexham"].active { background: var(--wrexham); }
+    .chip[data-f="f1"].active      { background: var(--f1); }
+    .chip[data-f="pl"].active      { background: var(--badge-pl);    color: var(--badge-pl-text); }
+    .chip[data-f="ucl"].active     { background: var(--badge-ucl);   color: var(--badge-ucl-text); }
+    .chip[data-f="fa"].active      { background: var(--badge-fa);    color: var(--badge-fa-text); }
+    .chip[data-f="champ"].active   { background: var(--badge-champ); color: var(--badge-champ-text); }
+    .chip[data-f="eflc"].active    { background: var(--badge-eflc);  color: var(--badge-eflc-text); }
+    .chip[data-f="race"].active       { background: var(--badge-race);  color: var(--badge-race-text); }
+    .chip[data-f="qualifying"].active { background: var(--badge-qual);  color: var(--badge-qual-text); }
+    .chip[data-f="practice"].active   { background: var(--surface3); color: var(--text); }
+
+    /* ── Main Layout ─────────────────────────────────────────── */
+    main { max-width: 760px; margin: 0 auto; padding: 1.5rem 1.5rem 5rem; }
+
+    /* ── Stats Bar ───────────────────────────────────────────── */
+    .stats { display: flex; gap: 1.25rem; margin-bottom: 1.25rem; flex-wrap: wrap; }
+
+    .stat-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.45rem;
+      font-size: 0.75rem;
+      color: var(--text-muted);
+    }
+
+    .stat-dot { width: 7px; height: 7px; border-radius: 50%; }
+    .stat-dot.spurs   { background: #3d6aba; }
+    .stat-dot.wrexham { background: var(--wrexham); }
+    .stat-dot.f1      { background: var(--f1); }
+
+    /* ── Notices ─────────────────────────────────────────────── */
+    .notice {
+      border-radius: 8px;
+      padding: 0.65rem 1rem;
+      font-size: 0.8rem;
+      margin-bottom: 0.75rem;
+      line-height: 1.4;
+    }
+    .notice.error { background: rgba(232,0,45,0.08); border: 1px solid rgba(232,0,45,0.2); color: #ff8a9a; }
+    .notice.info  { background: rgba(107,163,232,0.08); border: 1px solid rgba(107,163,232,0.18); color: #93c5fd; }
+
+    /* ── Date Groups ─────────────────────────────────────────── */
+    .date-group { margin-bottom: 1.75rem; }
+
+    .date-heading {
+      display: flex;
+      align-items: baseline;
+      gap: 0.6rem;
+      padding-bottom: 0.5rem;
+      margin-bottom: 0.6rem;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .date-weekday { font-size: 0.85rem; font-weight: 600; color: var(--text); }
+    .date-monthday { font-size: 0.8rem; color: var(--text-muted); }
+
+    .date-tag {
+      margin-left: auto;
+      font-size: 0.68rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 0.15rem 0.5rem;
+      border-radius: 4px;
+    }
+    .date-tag.today    { background: rgba(0,200,120,0.15); color: #34d399; }
+    .date-tag.tomorrow { background: rgba(107,163,232,0.12); color: #93c5fd; }
+
+    /* ── Event Cards ─────────────────────────────────────────── */
+    .event-card {
+      display: flex;
+      align-items: center;
+      gap: 0.875rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 0.875rem 1rem;
+      margin-bottom: 0.4rem;
+      position: relative;
+      overflow: hidden;
+      transition: border-color 0.15s, transform 0.12s, box-shadow 0.12s;
+      cursor: default;
+    }
+    .event-card:hover {
+      border-color: var(--border2);
+      transform: translateY(-1px);
+      box-shadow: 0 6px 24px rgba(0,0,0,0.25);
+    }
+
+    .event-card::after {
+      content: '';
+      position: absolute;
+      left: 0; top: 0; bottom: 0;
+      width: 3px;
+    }
+    .event-card.spurs::after   { background: linear-gradient(to bottom, #3d6aba, #1a3166); }
+    .event-card.wrexham::after { background: linear-gradient(to bottom, #ff3333, #990000); }
+    .event-card.f1::after      { background: linear-gradient(to bottom, #ff3355, #cc0022); }
+
+    .event-time-col { min-width: 52px; text-align: center; flex-shrink: 0; }
+    .event-hour {
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--text);
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+    .event-tz { font-size: 0.65rem; color: var(--text-dim); margin-top: 1px; }
+
+    .event-body { flex: 1; min-width: 0; }
+    .event-title {
+      font-size: 0.88rem;
+      font-weight: 600;
+      color: var(--text);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .event-sub {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      margin-top: 0.15rem;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .event-right {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 0.3rem;
+      flex-shrink: 0;
+    }
+
+    /* ── Badges ──────────────────────────────────────────────── */
+    .badge {
+      display: inline-block;
+      padding: 0.18rem 0.55rem;
+      border-radius: 5px;
+      font-size: 0.67rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      white-space: nowrap;
+    }
+    .badge-pl      { background: var(--badge-pl);      color: var(--badge-pl-text); }
+    .badge-ucl     { background: var(--badge-ucl);     color: var(--badge-ucl-text); }
+    .badge-fa      { background: var(--badge-fa);      color: var(--badge-fa-text); }
+    .badge-eflc    { background: var(--badge-eflc);    color: var(--badge-eflc-text); }
+    .badge-champ   { background: var(--badge-champ);   color: var(--badge-champ-text); }
+    .badge-race    { background: var(--badge-race);    color: var(--badge-race-text); }
+    .badge-qual    { background: var(--badge-qual);    color: var(--badge-qual-text); }
+    .badge-practice { background: var(--badge-practice); color: var(--badge-practice-text); border: 1px solid var(--border2); }
+    .badge-sprint  { background: var(--badge-sprint);  color: var(--badge-sprint-text); }
+    .badge-other   { background: var(--surface3);      color: var(--text-muted); border: 1px solid var(--border2); }
+
+    /* ── Countdown ───────────────────────────────────────────── */
+    .countdown { font-size: 0.7rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+    .countdown.imminent { color: #34d399; }
+    .countdown.soon     { color: #fb923c; }
+    .countdown.upcoming { color: var(--text-dim); }
+
+    /* ── Loading / Empty ─────────────────────────────────────── */
+    .loading-state {
+      text-align: center;
+      padding: 4rem 2rem;
+      color: var(--text-muted);
+      font-size: 0.85rem;
+    }
+    .spinner {
+      width: 28px; height: 28px;
+      border: 2px solid var(--border2);
+      border-top-color: var(--f1);
+      border-radius: 50%;
+      animation: spin 0.75s linear infinite;
+      margin: 0 auto 1rem;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .empty-state { text-align: center; padding: 3rem 2rem; color: var(--text-dim); font-size: 0.85rem; }
+
+    @media (max-width: 600px) {
+      header { padding: 0.875rem 1rem; }
+      .filter-bar { padding: 0.65rem 1rem; }
+      main { padding: 1.25rem 1rem 4rem; }
+      .event-card { padding: 0.75rem 0.875rem; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="wordmark">
+    <div class="wordmark-icon">SC</div>
+    Sports Calendar
+  </div>
+  <div class="header-meta">
+    <span class="last-updated" id="last-updated"></span>
+    <button class="refresh-btn" onclick="reloadAll()">↺ Refresh</button>
+  </div>
+</header>
+
+<div class="filter-bar">
+  <button class="chip active" data-f="all">All Events</button>
+  <div class="sep"></div>
+  <button class="chip" data-f="spurs">🐓 Tottenham</button>
+  <button class="chip" data-f="wrexham">🐉 Wrexham</button>
+  <button class="chip" data-f="pl">Premier League</button>
+  <button class="chip" data-f="ucl">Champions League</button>
+  <button class="chip" data-f="fa">FA Cup</button>
+  <button class="chip" data-f="champ">Championship</button>
+  <button class="chip" data-f="eflc">Carabao Cup</button>
+  <div class="sep"></div>
+  <button class="chip" data-f="f1">🏎 Formula 1</button>
+  <button class="chip" data-f="race">Races</button>
+  <button class="chip" data-f="qualifying">Qualifying</button>
+  <button class="chip" data-f="practice">Practice</button>
+</div>
+
+<main>
+  <div id="notices"></div>
+
+  <div class="stats" id="stats" style="display:none">
+    <div class="stat-pill"><div class="stat-dot spurs"></div><span id="spurs-stat"></span></div>
+    <div class="stat-pill"><div class="stat-dot wrexham"></div><span id="wrexham-stat"></span></div>
+    <div class="stat-pill"><div class="stat-dot f1"></div><span id="f1-stat"></span></div>
+  </div>
+
+  <div id="events-container">
+    <div class="loading-state"><div class="spinner"></div>Loading schedule…</div>
+  </div>
+</main>
+
+<script>
+// ─── State ────────────────────────────────────────────────────────────────────
+let allEvents = [];
+let activeFilter = 'all';
+
+// ─── Competition map ──────────────────────────────────────────────────────────
+const COMP_MAP = {
+  'PL':   { badge: 'pl',    label: 'Premier League',   filter: 'pl' },
+  'CL':   { badge: 'ucl',   label: 'Champions League', filter: 'ucl' },
+  'FAC':  { badge: 'fa',    label: 'FA Cup',           filter: 'fa' },
+  'ELC':  { badge: 'champ', label: 'Championship',     filter: 'champ' },
+  'FL1':  { badge: 'champ', label: 'League One',       filter: 'champ' },
+  'FL2':  { badge: 'champ', label: 'League Two',       filter: 'champ' },
+  'EFL':  { badge: 'eflc',  label: 'Carabao Cup',      filter: 'eflc' },
+  'UEL':  { badge: 'ucl',   label: 'Europa League',    filter: 'ucl' },
+  'UECL': { badge: 'ucl',   label: 'Conference League',filter: 'ucl' },
+};
+
+// ─── Boot ─────────────────────────────────────────────────────────────────────
+async function init() {
+  allEvents = [];
+  clearNotices();
+  setLoading(true);
+
+  await Promise.allSettled([
+    loadF1(),
+    loadTeamFixtures(73, 'spurs'),
+    loadWrexham(),
+  ]);
+
+  setLoading(false);
+  updateStats();
+  render();
+
+  document.getElementById('last-updated').textContent =
+    'Updated ' + new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+}
+
+function reloadAll() { init(); }
+
+// ─── F1 ───────────────────────────────────────────────────────────────────────
+async function loadF1() {
+  const year = new Date().getFullYear();
+  try {
+    const res = await fetch(`https://api.jolpi.ca/ergast/f1/${year}.json`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    const races = data?.MRData?.RaceTable?.Races ?? [];
+    const cutoff = Date.now() - 3 * 3600 * 1000;
+    const events = [];
+
+    for (const race of races) {
+      const gpShort = race.raceName.replace(' Grand Prix', ' GP');
+      const location = `${race.Circuit.circuitName}, ${race.Circuit.Location.country}`;
+      const r = race.round;
+
+      const addSession = (type, label, badge, dateStr, timeStr) => {
+        if (!dateStr) return;
+        const dt = new Date(`${dateStr}T${timeStr || '00:00:00Z'}`);
+        if (dt.getTime() < cutoff) return;
+        events.push({
+          id: `f1-${type}-${r}`,
+          sport: 'f1',
+          sessionType: type,
+          title: type === 'race' ? gpShort : `${gpShort} — ${label}`,
+          subtitle: location,
+          badge, badgeLabel: label,
+          date: dt,
+          hasTime: !!timeStr
+        });
+      };
+
+      addSession('practice',   'Practice 1',        'practice', race.FirstPractice?.date,    race.FirstPractice?.time);
+      addSession('practice',   'Practice 2',        'practice', race.SecondPractice?.date,   race.SecondPractice?.time);
+      addSession('practice',   'Practice 3',        'practice', race.ThirdPractice?.date,    race.ThirdPractice?.time);
+      addSession('qualifying', 'Sprint Qualifying', 'sprint',   race.SprintQualifying?.date, race.SprintQualifying?.time);
+      addSession('qualifying', 'Qualifying',        'qual',     race.Qualifying?.date,       race.Qualifying?.time);
+      addSession('sprint',     'Sprint',            'sprint',   race.Sprint?.date,           race.Sprint?.time);
+      addSession('race',       'Race',              'race',     race.date,                   race.time);
+    }
+
+    allEvents = [...allEvents.filter(e => e.sport !== 'f1'), ...events];
+  } catch (err) {
+    addNotice('error', `F1 schedule failed to load: ${err.message}`);
+  }
+}
+
+// ─── Football ─────────────────────────────────────────────────────────────────
+async function loadWrexham() {
+  try {
+    let id = localStorage.getItem('wrexham_team_id');
+    if (!id) {
+      const res = await fetch(`/api/competition-teams?comp=ELC`);
+      if (!res.ok) throw new Error(`Lookup HTTP ${res.status}`);
+      const data = await res.json();
+      const team = (data.teams ?? []).find(t => t.name.toLowerCase().includes('wrexham'));
+      if (!team) throw new Error('Wrexham not found in the Championship — check their current division');
+      id = String(team.id);
+      localStorage.setItem('wrexham_team_id', id);
+    }
+    await loadTeamFixtures(parseInt(id), 'wrexham');
+  } catch (err) {
+    addNotice('error', `Wrexham: ${err.message}`);
+  }
+}
+
+async function loadTeamFixtures(teamId, sportKey) {
+  const label = sportKey === 'spurs' ? 'Tottenham' : 'Wrexham';
+  const shortName = sportKey === 'spurs' ? 'Tottenham' : 'Wrexham';
+  try {
+    const res = await fetch(`/api/team?id=${teamId}`);
+    if (res.status === 401 || res.status === 403) {
+      addNotice('error', 'Football API key is invalid or missing on the server.');
+      return;
+    }
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    const matches = data.matches ?? [];
+
+    const events = matches.map(m => {
+      const comp = COMP_MAP[m.competition.code] ??
+        { badge: 'other', label: m.competition.name, filter: 'other' };
+      const isHome = m.homeTeam?.id === teamId;
+      const opp = isHome ? m.awayTeam?.name : m.homeTeam?.name;
+      const title = isHome ? `${shortName} vs ${opp}` : `${opp} vs ${shortName}`;
+
+      return {
+        id: `${sportKey}-${m.id}`,
+        sport: sportKey,
+        sessionType: 'match',
+        competitionFilter: comp.filter,
+        title,
+        subtitle: `${comp.label} · ${isHome ? 'Home' : 'Away'}`,
+        badge: comp.badge,
+        badgeLabel: comp.label,
+        date: new Date(m.utcDate),
+        hasTime: true
+      };
+    });
+
+    allEvents = [...allEvents.filter(e => e.sport !== sportKey), ...events];
+  } catch (err) {
+    addNotice('error', `${label} fixtures failed to load: ${err.message}`);
+  }
+}
+
+// ─── Render ───────────────────────────────────────────────────────────────────
+function render() {
+  const container = document.getElementById('events-container');
+
+  const filtered = allEvents.filter(e => {
+    switch (activeFilter) {
+      case 'all':        return true;
+      case 'spurs':      return e.sport === 'spurs';
+      case 'wrexham':    return e.sport === 'wrexham';
+      case 'f1':         return e.sport === 'f1';
+      case 'pl':         return e.competitionFilter === 'pl';
+      case 'ucl':        return e.competitionFilter === 'ucl';
+      case 'fa':         return e.competitionFilter === 'fa';
+      case 'champ':      return e.competitionFilter === 'champ';
+      case 'eflc':       return e.competitionFilter === 'eflc';
+      case 'race':       return e.sessionType === 'race';
+      case 'qualifying': return e.sessionType === 'qualifying';
+      case 'sprint':     return e.sessionType === 'sprint';
+      case 'practice':   return e.sessionType === 'practice';
+      default:           return true;
+    }
+  }).sort((a, b) => a.date - b.date);
+
+  if (filtered.length === 0) {
+    container.innerHTML = '<div class="empty-state">No upcoming events.</div>';
+    return;
+  }
+
+  const todayStr    = new Date().toDateString();
+  const tomorrowStr = new Date(Date.now() + 86400000).toDateString();
+
+  const groups = new Map();
+  for (const ev of filtered) {
+    const key = ev.date.toDateString();
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(ev);
+  }
+
+  let html = '';
+  for (const [key, events] of groups) {
+    const d = new Date(key);
+    const weekday  = d.toLocaleDateString('en-US', { weekday: 'long' });
+    const monthDay = d.toLocaleDateString('en-US', {
+      month: 'long', day: 'numeric',
+      ...(d.getFullYear() !== new Date().getFullYear() ? { year: 'numeric' } : {})
+    });
+
+    let tagHtml = '';
+    if (key === todayStr)    tagHtml = '<span class="date-tag today">Today</span>';
+    if (key === tomorrowStr) tagHtml = '<span class="date-tag tomorrow">Tomorrow</span>';
+
+    html += `
+      <div class="date-group">
+        <div class="date-heading">
+          <span class="date-weekday">${weekday}</span>
+          <span class="date-monthday">${monthDay}</span>
+          ${tagHtml}
+        </div>
+        ${events.map(renderCard).join('')}
+      </div>`;
+  }
+
+  container.innerHTML = html;
+}
+
+function renderCard(ev) {
+  const now = new Date();
+
+  let timeHtml;
+  const isTimeUnknown = !ev.hasTime || (ev.date.getUTCHours() === 0 && ev.date.getUTCMinutes() === 0);
+  if (isTimeUnknown) {
+    timeHtml = `<div class="event-hour">TBC</div>`;
+  } else {
+    const t = ev.date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+    const tzParts = new Intl.DateTimeFormat('en-US', { timeZoneName: 'short' }).formatToParts(ev.date);
+    const tz = tzParts.find(p => p.type === 'timeZoneName')?.value ?? '';
+    timeHtml = `<div class="event-hour">${t}</div><div class="event-tz">${tz}</div>`;
+  }
+
+  const diff = ev.date - now;
+  let countdownHtml = '';
+  if (diff > 0 && diff < 3600 * 1000) {
+    const m = Math.floor(diff / 60000);
+    const s = Math.floor((diff % 60000) / 1000);
+    countdownHtml = `<div class="countdown imminent">${m}m ${s}s</div>`;
+  } else if (diff > 0 && diff < 24 * 3600 * 1000) {
+    const h = Math.floor(diff / 3600000);
+    const m = Math.floor((diff % 3600000) / 60000);
+    countdownHtml = `<div class="countdown soon">in ${h}h ${m}m</div>`;
+  } else if (diff > 0 && diff < 5 * 86400 * 1000) {
+    countdownHtml = `<div class="countdown upcoming">in ${Math.floor(diff / 86400000)}d</div>`;
+  }
+
+  return `
+    <div class="event-card ${ev.sport}">
+      <div class="event-time-col">${timeHtml}</div>
+      <div class="event-body">
+        <div class="event-title">${ev.title}</div>
+        <div class="event-sub">${ev.subtitle}</div>
+      </div>
+      <div class="event-right">
+        <span class="badge badge-${ev.badge}">${ev.badgeLabel}</span>
+        ${countdownHtml}
+      </div>
+    </div>`;
+}
+
+// ─── Filters ──────────────────────────────────────────────────────────────────
+document.querySelectorAll('.chip').forEach(chip => {
+  chip.addEventListener('click', () => {
+    document.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
+    chip.classList.add('active');
+    activeFilter = chip.dataset.f;
+    render();
+  });
+});
+
+// ─── Utils ────────────────────────────────────────────────────────────────────
+function setLoading(yes) {
+  if (yes) document.getElementById('events-container').innerHTML =
+    '<div class="loading-state"><div class="spinner"></div>Loading schedule…</div>';
+}
+
+function updateStats() {
+  const spurs   = allEvents.filter(e => e.sport === 'spurs').length;
+  const wrexham = allEvents.filter(e => e.sport === 'wrexham').length;
+  const f1      = allEvents.filter(e => e.sport === 'f1').length;
+  const bar = document.getElementById('stats');
+  if (spurs + wrexham + f1 === 0) { bar.style.display = 'none'; return; }
+  bar.style.display = 'flex';
+
+  const spursEl   = document.getElementById('spurs-stat');
+  const wrexhamEl = document.getElementById('wrexham-stat');
+  const f1El      = document.getElementById('f1-stat');
+
+  spursEl.textContent   = spurs   ? `${spurs} Spurs match${spurs   === 1 ? '' : 'es'}` : '';
+  wrexhamEl.textContent = wrexham ? `${wrexham} Wrexham match${wrexham === 1 ? '' : 'es'}` : '';
+  f1El.textContent      = f1      ? `${f1} F1 session${f1 === 1 ? '' : 's'}` : '';
+
+  spursEl.closest('.stat-pill').style.display   = spurs   ? '' : 'none';
+  wrexhamEl.closest('.stat-pill').style.display = wrexham ? '' : 'none';
+  f1El.closest('.stat-pill').style.display      = f1      ? '' : 'none';
+}
+
+function addNotice(type, msg) {
+  const el = document.createElement('div');
+  el.className = `notice ${type}`;
+  el.textContent = msg;
+  document.getElementById('notices').appendChild(el);
+}
+
+function clearNotices() {
+  document.getElementById('notices').innerHTML = '';
+}
+
+// ─── Start ────────────────────────────────────────────────────────────────────
+init();
+setInterval(() => render(), 60000);
+</script>
+</body>
+</html>
