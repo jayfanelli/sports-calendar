@@ -7,6 +7,18 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400;1,700&display=swap" rel="stylesheet">
+  <script>
+    // Apply theme before paint to avoid flash
+    (function() {
+      const mode = localStorage.getItem('theme_mode') || 'auto';
+      if (mode === 'light' || mode === 'dark') {
+        document.documentElement.dataset.theme = mode;
+      } else {
+        document.documentElement.dataset.theme =
+          window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+      }
+    })();
+  </script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -46,6 +58,60 @@
       --badge-practice-text: #aaaacc;
       --badge-sprint: #3a1a6a;
       --badge-sprint-text: #c4b5fd;
+    }
+
+    [data-theme="light"] {
+      --bg: #f0f0f6;
+      --surface: #ffffff;
+      --surface2: #f5f5fb;
+      --surface3: #eaeaf2;
+      --border: rgba(0,0,0,0.08);
+      --border2: rgba(0,0,0,0.15);
+      --text: #1a1a30;
+      --text-muted: #5a5a80;
+      --text-dim: #9898b8;
+
+      --spurs-glow: rgba(26,49,102,0.1);
+      --wrexham-glow: rgba(204,0,0,0.08);
+      --f1-glow: rgba(232,0,45,0.06);
+
+      --badge-pl: #f3e8ff;
+      --badge-pl-text: #6b21a8;
+      --badge-ucl: #dbeafe;
+      --badge-ucl-text: #1e3a8a;
+      --badge-fa: #fee2e2;
+      --badge-fa-text: #991b1b;
+      --badge-eflc: #dcfce7;
+      --badge-eflc-text: #166534;
+      --badge-champ: #e0e7ff;
+      --badge-champ-text: #3730a3;
+      --badge-race: #ffe4e6;
+      --badge-race-text: #9f1239;
+      --badge-qual: #ffedd5;
+      --badge-qual-text: #9a3412;
+      --badge-practice: #f3f4f6;
+      --badge-practice-text: #374151;
+      --badge-sprint: #ede9fe;
+      --badge-sprint-text: #5b21b6;
+    }
+
+    [data-theme="light"] header {
+      background: rgba(255,255,255,0.92);
+    }
+
+    [data-theme="light"] .event-card {
+      box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+    }
+    [data-theme="light"] .event-card:hover {
+      box-shadow: 0 6px 24px rgba(0,0,0,0.12);
+    }
+
+    [data-theme="light"] .badge-practice { border-color: rgba(0,0,0,0.1); }
+    [data-theme="light"] .badge-other    { border-color: rgba(0,0,0,0.1); }
+    [data-theme="light"] .chip[data-f="all"].active { background: var(--surface3); border-color: var(--border2); color: var(--text); }
+
+    html, body, header, .filter-bar, .event-card, .chip, .badge, .notice, .refresh-btn, .theme-btn {
+      transition: background 0.2s, background-color 0.2s, color 0.2s, border-color 0.2s, box-shadow 0.2s;
     }
 
     html { scroll-behavior: smooth; }
@@ -99,7 +165,7 @@
 
     .last-updated { font-size: 0.72rem; color: var(--text-dim); }
 
-    .refresh-btn {
+    .refresh-btn, .theme-btn {
       background: var(--surface2);
       border: 1px solid var(--border2);
       border-radius: 6px;
@@ -107,10 +173,9 @@
       color: var(--text-muted);
       font-size: 0.75rem;
       cursor: pointer;
-      transition: all 0.15s;
       font-family: inherit;
     }
-    .refresh-btn:hover { background: var(--surface3); color: var(--text); }
+    .refresh-btn:hover, .theme-btn:hover { background: var(--surface3); color: var(--text); }
 
     /* ── Filter Bar ─────────────────────────────────────────── */
     .filter-bar {
@@ -347,6 +412,7 @@
   </div>
   <div class="header-meta">
     <span class="last-updated" id="last-updated"></span>
+    <button class="theme-btn" id="theme-btn" onclick="cycleTheme()"></button>
     <button class="refresh-btn" onclick="reloadAll()">↺ Refresh</button>
   </div>
 </header>
@@ -383,6 +449,88 @@
 </main>
 
 <script>
+// ─── Theme ────────────────────────────────────────────────────────────────────
+let themeMode = localStorage.getItem('theme_mode') || 'auto'; // 'auto'|'light'|'dark'
+let sunTimes  = null; // cached { sunrise, sunset, date }
+
+async function initTheme() {
+  const t = await resolveTheme();
+  applyTheme(t);
+  updateThemeBtn();
+
+  // Re-evaluate every minute (catches sunrise/sunset crossings)
+  setInterval(async () => {
+    if (themeMode === 'auto') applyTheme(await resolveTheme());
+  }, 60000);
+
+  // Respond to system preference changes
+  window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', async () => {
+    if (themeMode === 'auto') applyTheme(await resolveTheme());
+  });
+}
+
+async function resolveTheme() {
+  if (themeMode !== 'auto') return themeMode;
+  try {
+    const pos = await getGeoPos();
+    const today = new Date().toDateString();
+    if (!sunTimes || sunTimes.date !== today) {
+      const res = await fetch(`https://api.sunrise-sunset.org/json?lat=${pos.lat}&lng=${pos.lng}&formatted=0`);
+      if (!res.ok) throw new Error();
+      const data = await res.json();
+      sunTimes = {
+        sunrise: new Date(data.results.sunrise).getTime(),
+        sunset:  new Date(data.results.sunset).getTime(),
+        date: today
+      };
+    }
+    const now = Date.now();
+    return (now >= sunTimes.sunrise && now < sunTimes.sunset) ? 'light' : 'dark';
+  } catch {
+    return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+  }
+}
+
+function getGeoPos() {
+  const cached = localStorage.getItem('geo_pos');
+  if (cached) return Promise.resolve(JSON.parse(cached));
+  return new Promise((resolve, reject) => {
+    if (!navigator.geolocation) { reject(); return; }
+    navigator.geolocation.getCurrentPosition(
+      p => {
+        const pos = { lat: p.coords.latitude, lng: p.coords.longitude };
+        localStorage.setItem('geo_pos', JSON.stringify(pos));
+        resolve(pos);
+      },
+      reject,
+      { timeout: 5000 }
+    );
+  });
+}
+
+function applyTheme(theme) {
+  document.documentElement.dataset.theme = theme;
+}
+
+function cycleTheme() {
+  themeMode = themeMode === 'auto' ? 'light' : themeMode === 'light' ? 'dark' : 'auto';
+  localStorage.setItem('theme_mode', themeMode);
+  if (themeMode === 'auto') {
+    resolveTheme().then(t => { applyTheme(t); updateThemeBtn(); });
+  } else {
+    applyTheme(themeMode);
+    updateThemeBtn();
+  }
+}
+
+function updateThemeBtn() {
+  const btn = document.getElementById('theme-btn');
+  if (!btn) return;
+  if (themeMode === 'light')      btn.textContent = '☀ Light';
+  else if (themeMode === 'dark')  btn.textContent = '☾ Dark';
+  else                            btn.textContent = '◐ Auto';
+}
+
 // ─── State ────────────────────────────────────────────────────────────────────
 let allEvents = [];
 let activeFilter = 'all';
@@ -684,6 +832,7 @@ function clearNotices() {
 }
 
 // ─── Start ────────────────────────────────────────────────────────────────────
+initTheme();
 init();
 setInterval(() => render(), 60000);
 </script>
