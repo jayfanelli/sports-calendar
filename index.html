@@ -58,6 +58,16 @@
       --badge-practice-text: #aaaacc;
       --badge-sprint: #3a1a6a;
       --badge-sprint-text: #c4b5fd;
+
+      --top6: #d97706;
+      --badge-liga: #7c2d12;
+      --badge-liga-text: #fed7aa;
+      --badge-bl: #7f1d1d;
+      --badge-bl-text: #fecaca;
+      --badge-sa: #1e3a8a;
+      --badge-sa-text: #bfdbfe;
+      --badge-l1: #4c1d95;
+      --badge-l1-text: #ddd6fe;
     }
 
     [data-theme="light"] {
@@ -93,6 +103,15 @@
       --badge-practice-text: #374151;
       --badge-sprint: #ede9fe;
       --badge-sprint-text: #5b21b6;
+
+      --badge-liga: #fff7ed;
+      --badge-liga-text: #9a3412;
+      --badge-bl: #fef2f2;
+      --badge-bl-text: #991b1b;
+      --badge-sa: #eff6ff;
+      --badge-sa-text: #1e40af;
+      --badge-l1: #f5f3ff;
+      --badge-l1-text: #5b21b6;
     }
 
     [data-theme="light"] header {
@@ -223,6 +242,7 @@
     .chip[data-f="race"].active       { background: var(--badge-race);  color: var(--badge-race-text); }
     .chip[data-f="qualifying"].active { background: var(--badge-qual);  color: var(--badge-qual-text); }
     .chip[data-f="practice"].active   { background: var(--surface3); color: var(--text); }
+    .chip[data-f="top6"].active       { background: var(--top6); }
 
     /* ── Main Layout ─────────────────────────────────────────── */
     main { max-width: 760px; margin: 0 auto; padding: 1.5rem 1.5rem 5rem; }
@@ -242,6 +262,7 @@
     .stat-dot.spurs   { background: #3d6aba; }
     .stat-dot.wrexham { background: var(--wrexham); }
     .stat-dot.f1      { background: var(--f1); }
+    .stat-dot.top6    { background: var(--top6); }
 
     /* ── Notices ─────────────────────────────────────────────── */
     .notice {
@@ -311,6 +332,7 @@
     .event-card.spurs::after   { background: linear-gradient(to bottom, #3d6aba, #1a3166); }
     .event-card.wrexham::after { background: linear-gradient(to bottom, #ff3333, #990000); }
     .event-card.f1::after      { background: linear-gradient(to bottom, #ff3355, #cc0022); }
+    .event-card.top6::after    { background: linear-gradient(to bottom, #f59e0b, #d97706); }
 
     .event-time-col { min-width: 52px; text-align: center; flex-shrink: 0; }
     .event-hour {
@@ -369,6 +391,10 @@
     .badge-practice { background: var(--badge-practice); color: var(--badge-practice-text); border: 1px solid var(--border2); }
     .badge-sprint  { background: var(--badge-sprint);  color: var(--badge-sprint-text); }
     .badge-other   { background: var(--surface3);      color: var(--text-muted); border: 1px solid var(--border2); }
+    .badge-liga    { background: var(--badge-liga);    color: var(--badge-liga-text); }
+    .badge-bl      { background: var(--badge-bl);      color: var(--badge-bl-text); }
+    .badge-sa      { background: var(--badge-sa);      color: var(--badge-sa-text); }
+    .badge-l1      { background: var(--badge-l1);      color: var(--badge-l1-text); }
 
     /* ── Countdown ───────────────────────────────────────────── */
     .countdown { font-size: 0.7rem; font-weight: 600; font-variant-numeric: tabular-nums; }
@@ -419,6 +445,7 @@
 
 <div class="filter-bar">
   <button class="chip active" data-f="all">All Events</button>
+  <button class="chip" data-f="top6">⚡ Top Matches</button>
   <div class="sep"></div>
   <button class="chip" data-f="spurs">🐓 Tottenham</button>
   <button class="chip" data-f="wrexham">🐉 Wrexham</button>
@@ -441,6 +468,7 @@
     <div class="stat-pill"><div class="stat-dot spurs"></div><span id="spurs-stat"></span></div>
     <div class="stat-pill"><div class="stat-dot wrexham"></div><span id="wrexham-stat"></span></div>
     <div class="stat-pill"><div class="stat-dot f1"></div><span id="f1-stat"></span></div>
+    <div class="stat-pill"><div class="stat-dot top6"></div><span id="top6-stat"></span></div>
   </div>
 
   <div id="events-container">
@@ -546,6 +574,9 @@ const COMP_MAP = {
   'EFL':  { badge: 'eflc',  label: 'Carabao Cup',      filter: 'eflc' },
   'UEL':  { badge: 'ucl',   label: 'Europa League',    filter: 'ucl' },
   'UECL': { badge: 'ucl',   label: 'Conference League',filter: 'ucl' },
+  'PD':   { badge: 'liga',  label: 'La Liga',          filter: 'liga' },
+  'BL1':  { badge: 'bl',    label: 'Bundesliga',       filter: 'bl' },
+  'SA':   { badge: 'sa',    label: 'Serie A',          filter: 'sa' },
 };
 
 // ─── Boot ─────────────────────────────────────────────────────────────────────
@@ -558,8 +589,10 @@ async function init() {
     loadF1(),
     loadTeamFixtures(73, 'spurs'),
     loadWrexham(),
+    loadTopMatches(),
   ]);
 
+  deduplicateTopMatches();
   setLoading(false);
   updateStats();
   render();
@@ -676,6 +709,67 @@ async function loadTeamFixtures(teamId, sportKey) {
   }
 }
 
+// ─── Top Matches ──────────────────────────────────────────────────────────────
+async function loadTopMatches() {
+  try {
+    const res = await fetch('/api/top-matches');
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    const matches = data.matches ?? [];
+
+    const events = matches.map(m => {
+      const comp     = COMP_MAP[m.competition] ?? { badge: 'other', label: m.competitionLabel };
+      const hPos     = m.homeTeam.position;
+      const aPos     = m.awayTeam.position;
+      const isCross  = m.homeTeam.leagueCode !== m.awayTeam.leagueCode;
+      const posStr   = isCross
+        ? `${m.homeTeam.leagueCode} #${hPos} vs ${m.awayTeam.leagueCode} #${aPos}`
+        : `#${hPos} vs #${aPos}`;
+
+      return {
+        id:                `top6-${m.id}`,
+        sport:             'top6',
+        sessionType:       'match',
+        competitionFilter: comp.filter ?? m.competition.toLowerCase(),
+        title:             `${m.homeTeam.name} vs ${m.awayTeam.name}`,
+        subtitle:          `${m.competitionLabel} · ${posStr}`,
+        badge:             comp.badge,
+        badgeLabel:        m.competitionLabel,
+        date:              new Date(m.utcDate),
+        hasTime:           true,
+      };
+    });
+
+    allEvents = [...allEvents.filter(e => e.sport !== 'top6'), ...events];
+  } catch (err) {
+    addNotice('error', `Top Matches failed to load: ${err.message}`);
+  }
+}
+
+// If a top-6 clash also involves one of your teams, tag the team event instead
+// of keeping a duplicate in allEvents.
+function deduplicateTopMatches() {
+  const teamMatchMap = new Map();
+  allEvents.forEach(e => {
+    if (e.sport === 'spurs' || e.sport === 'wrexham') {
+      const rawId = e.id.split('-')[1];
+      teamMatchMap.set(rawId, e);
+    }
+  });
+
+  allEvents = allEvents.filter(e => {
+    if (e.sport !== 'top6') return true;
+    const rawId    = e.id.split('-')[1];
+    const teamEvent = teamMatchMap.get(rawId);
+    if (teamEvent) {
+      teamEvent.isTop6    = true;
+      teamEvent.top6Sub   = e.subtitle; // keep the "#1 vs #3" subtitle for reference
+      return false;
+    }
+    return true;
+  });
+}
+
 // ─── Render ───────────────────────────────────────────────────────────────────
 function render() {
   const container = document.getElementById('events-container');
@@ -683,6 +777,7 @@ function render() {
   const filtered = allEvents.filter(e => {
     switch (activeFilter) {
       case 'all':        return true;
+      case 'top6':       return e.sport === 'top6' || e.isTop6 === true;
       case 'spurs':      return e.sport === 'spurs';
       case 'wrexham':    return e.sport === 'wrexham';
       case 'f1':         return e.sport === 'f1';
@@ -769,12 +864,16 @@ function renderCard(ev) {
     countdownHtml = `<div class="countdown upcoming">in ${Math.floor(diff / 86400000)}d</div>`;
   }
 
+  const subLine = (ev.isTop6 && activeFilter === 'top6' && ev.top6Sub)
+    ? ev.top6Sub
+    : ev.subtitle;
+
   return `
     <div class="event-card ${ev.sport}">
       <div class="event-time-col">${timeHtml}</div>
       <div class="event-body">
         <div class="event-title">${ev.title}</div>
-        <div class="event-sub">${ev.subtitle}</div>
+        <div class="event-sub">${subLine}</div>
       </div>
       <div class="event-right">
         <span class="badge badge-${ev.badge}">${ev.badgeLabel}</span>
@@ -803,21 +902,25 @@ function updateStats() {
   const spurs   = allEvents.filter(e => e.sport === 'spurs').length;
   const wrexham = allEvents.filter(e => e.sport === 'wrexham').length;
   const f1      = allEvents.filter(e => e.sport === 'f1').length;
+  const top6    = allEvents.filter(e => e.sport === 'top6' || e.isTop6).length;
   const bar = document.getElementById('stats');
-  if (spurs + wrexham + f1 === 0) { bar.style.display = 'none'; return; }
+  if (spurs + wrexham + f1 + top6 === 0) { bar.style.display = 'none'; return; }
   bar.style.display = 'flex';
 
   const spursEl   = document.getElementById('spurs-stat');
   const wrexhamEl = document.getElementById('wrexham-stat');
   const f1El      = document.getElementById('f1-stat');
+  const top6El    = document.getElementById('top6-stat');
 
   spursEl.textContent   = spurs   ? `${spurs} Spurs match${spurs   === 1 ? '' : 'es'}` : '';
   wrexhamEl.textContent = wrexham ? `${wrexham} Wrexham match${wrexham === 1 ? '' : 'es'}` : '';
   f1El.textContent      = f1      ? `${f1} F1 session${f1 === 1 ? '' : 's'}` : '';
+  top6El.textContent    = top6    ? `${top6} top match${top6 === 1 ? '' : 'es'}` : '';
 
   spursEl.closest('.stat-pill').style.display   = spurs   ? '' : 'none';
   wrexhamEl.closest('.stat-pill').style.display = wrexham ? '' : 'none';
   f1El.closest('.stat-pill').style.display      = f1      ? '' : 'none';
+  top6El.closest('.stat-pill').style.display    = top6    ? '' : 'none';
 }
 
 function addNotice(type, msg) {
