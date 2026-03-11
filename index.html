@@ -754,22 +754,26 @@ async function loadTopMatches() {
 
 // If a top-6 clash also involves one of your teams, tag the team event instead
 // of keeping a duplicate in allEvents.
+// Team fixtures (football-data.org) and top-match fixtures (API-Football) use
+// different ID systems, so we match by team name fragment + same calendar day.
+const TEAM_NAME_FRAGS = { spurs: ['tottenham'], wrexham: ['wrexham'] };
+
 function deduplicateTopMatches() {
-  const teamMatchMap = new Map();
-  allEvents.forEach(e => {
-    if (e.sport === 'spurs' || e.sport === 'wrexham') {
-      const rawId = e.id.split('-')[1];
-      teamMatchMap.set(rawId, e);
-    }
-  });
+  const teamEvents = allEvents.filter(e => e.sport === 'spurs' || e.sport === 'wrexham');
 
   allEvents = allEvents.filter(e => {
     if (e.sport !== 'top6') return true;
-    const rawId    = e.id.split('-')[1];
-    const teamEvent = teamMatchMap.get(rawId);
+    const eDate       = e.date.toDateString();
+    const eTitleLower = e.title.toLowerCase();
+
+    const teamEvent = teamEvents.find(t => {
+      if (t.date.toDateString() !== eDate) return false;
+      return (TEAM_NAME_FRAGS[t.sport] || []).some(f => eTitleLower.includes(f));
+    });
+
     if (teamEvent) {
-      teamEvent.isTop6    = true;
-      teamEvent.top6Sub   = e.subtitle; // keep the "#1 vs #3" subtitle for reference
+      teamEvent.isTop6  = true;
+      teamEvent.top6Sub = e.subtitle;
       return false;
     }
     return true;

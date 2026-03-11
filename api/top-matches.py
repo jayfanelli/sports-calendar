@@ -1,113 +1,143 @@
 from http.server import BaseHTTPRequestHandler
 import urllib.request, urllib.error, os, json
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timedelta
+from functools import partial
 
-FD_BASE = "https://api.football-data.org/v4"
-FD_KEY  = os.environ.get("FD_API_KEY", "")
+AF_BASE = "https://v3.football.api-sports.io"
+AF_KEY  = os.environ.get("APIFOOTBALL_KEY", "")
 
-LEAGUES    = ['PL', 'ELC', 'PD', 'BL1', 'SA', 'FL1']
-EURO_COMPS = ['CL', 'UEL', 'UECL']
-TOP_N      = 6
+LEAGUES = [
+    {'id': 39,  'code': 'PL',   'label': 'Premier League'},
+    {'id': 40,  'code': 'ELC',  'label': 'Championship'},
+    {'id': 140, 'code': 'PD',   'label': 'La Liga'},
+    {'id': 78,  'code': 'BL1',  'label': 'Bundesliga'},
+    {'id': 135, 'code': 'SA',   'label': 'Serie A'},
+    {'id': 61,  'code': 'FL1',  'label': 'Ligue 1'},
+]
+EURO_COMPS = [
+    {'id': 2,   'code': 'CL',   'label': 'Champions League'},
+    {'id': 3,   'code': 'UEL',  'label': 'Europa League'},
+    {'id': 848, 'code': 'UECL', 'label': 'Conference League'},
+]
+TOP_N        = 6
+LEAGUE_CODES = {l['code'] for l in LEAGUES}
 
-def fd_get(path):
+def current_season():
+    now = datetime.utcnow()
+    # European seasons start in Aug: 2025/26 season → season ID 2025
+    return now.year if now.month >= 8 else now.year - 1
+
+def af_get(path):
     req = urllib.request.Request(
-        f"{FD_BASE}{path}",
-        headers={"X-Auth-Token": FD_KEY}
+        f"{AF_BASE}{path}",
+        headers={"x-apisports-key": AF_KEY}
     )
     with urllib.request.urlopen(req, timeout=10) as r:
         return json.loads(r.read())
 
-def fetch_standings(code):
+def fetch_standings(league):
     try:
-        data       = fd_get(f"/competitions/{code}/standings")
-        standings  = data.get('standings', [])
-        total      = next((s for s in standings if s['type'] == 'TOTAL'), standings[0] if standings else None)
-        if not total:
-            return code, {}
-        comp_label = data['competition']['name']
+        data      = af_get(f"/standings?league={league['id']}&season={current_season()}")
+        responses = data.get('response', [])
+        if not responses:
+            return league['code'], {}
+        table  = responses[0]['league']['standings'][0]
         result = {}
-        for row in total['table'][:TOP_N]:
+        for row in table[:TOP_N]:
             tid = row['team']['id']
             result[tid] = {
-                'position':   row['position'],
-                'leagueCode': code,
-                'leagueLabel': comp_label,
+                'position':    row['rank'],
+                'leagueCode':  league['code'],
+                'leagueLabel': league['label'],
             }
-        return code, result
+        return league['code'], result
     except Exception:
-        return code, {}
+        return league['code'], {}
 
-def fetch_matches(code):
+def fetch_fixtures(comp, date_from, date_to):
     try:
-        data       = fd_get(f"/competitions/{code}/matches?status=SCHEDULED")
-        comp_label = data['competition']['name']
-        return code, comp_label, data.get('matches', [])
+        path = (
+            f"/fixtures"
+            f"?league={comp['id']}"
+            f"&season={current_season()}"
+            f"&from={date_from}"
+            f"&to={date_to}"
+            f"&status=NS"
+        )
+        data = af_get(path)
+        return comp['code'], comp['label'], data.get('response', [])
     except Exception:
-        return code, code, []
+        return comp['code'], comp['label'], []
 
 class handler(BaseHTTPRequestHandler):
     def do_GET(self):
         try:
-            # ── 1. Fetch standings for all domestic leagues concurrently ──────
-            # max_workers=3 avoids a burst that would exhaust the API rate limit
-            top_teams = {}  # team_id -> {position, leagueCode, leagueLabel}
+            today  = datetime.utcnow()
+            d_from = today.strftime('%Y-%m-%d')
+            d_to   = (today + timedelta(days=90)).strftime('%Y-%m-%d')
+
+            # ── 1. Fetch standings for all domestic leagues ───────────────────
+            # max_workers=3 keeps concurrent requests manageable
+            top_teams = {}
             with ThreadPoolExecutor(max_workers=3) as ex:
                 for _, teams in ex.map(fetch_standings, LEAGUES):
                     top_teams.update(teams)
 
             top_ids = set(top_teams.keys())
 
-            # ── 2. Fetch scheduled matches for all comps concurrently ─────────
-            all_comps    = LEAGUES + EURO_COMPS
-            comp_results = []
+            # ── 2. Fetch scheduled fixtures for all comps ─────────────────────
+            all_comps  = LEAGUES + EURO_COMPS
+            fetch_fn   = partial(fetch_fixtures, date_from=d_from, date_to=d_to)
             with ThreadPoolExecutor(max_workers=3) as ex:
-                comp_results = list(ex.map(fetch_matches, all_comps))
+                comp_results = list(ex.map(fetch_fn, all_comps))
 
-            # Process domestic leagues first so euro-comp dupes get dropped
-            comp_results.sort(key=lambda x: (0 if x[0] in LEAGUES else 1))
+            # Domestic leagues first so euro-comp duplicates get dropped
+            comp_results.sort(key=lambda x: (0 if x[0] in LEAGUE_CODES else 1))
 
             # ── 3. Filter to top-6 vs top-6 ──────────────────────────────────
             results  = []
             seen_ids = set()
 
-            for code, comp_label, matches in comp_results:
-                for m in matches:
-                    mid   = m['id']
-                    ht_id = m['homeTeam']['id']
-                    at_id = m['awayTeam']['id']
+            for code, comp_label, fixtures in comp_results:
+                for f in fixtures:
+                    fid   = f['fixture']['id']
+                    ht_id = f['teams']['home']['id']
+                    at_id = f['teams']['away']['id']
 
-                    if mid in seen_ids:
+                    if fid in seen_ids:
                         continue
                     if ht_id not in top_ids or at_id not in top_ids:
                         continue
 
-                    seen_ids.add(mid)
+                    seen_ids.add(fid)
                     ht = top_teams.get(ht_id, {})
                     at = top_teams.get(at_id, {})
 
                     results.append({
-                        'id':               mid,
+                        'id':               fid,
                         'competition':      code,
                         'competitionLabel': comp_label,
                         'homeTeam': {
-                            'id':        ht_id,
-                            'name':      m['homeTeam']['name'],
-                            'position':  ht.get('position'),
+                            'id':         ht_id,
+                            'name':       f['teams']['home']['name'],
+                            'position':   ht.get('position'),
                             'leagueCode': ht.get('leagueCode'),
                         },
                         'awayTeam': {
-                            'id':        at_id,
-                            'name':      m['awayTeam']['name'],
-                            'position':  at.get('position'),
+                            'id':         at_id,
+                            'name':       f['teams']['away']['name'],
+                            'position':   at.get('position'),
                             'leagueCode': at.get('leagueCode'),
                         },
-                        'utcDate': m['utcDate'],
+                        'utcDate': f['fixture']['date'],
                     })
 
             body = json.dumps({'matches': results}).encode()
             self.send_response(200)
             self.send_header("Content-Type",  "application/json")
-            self.send_header("Cache-Control", "s-maxage=3600, stale-while-revalidate=1800")
+            # Cache for 24 hours — one batch of API calls per day per edge node
+            self.send_header("Cache-Control", "s-maxage=86400, stale-while-revalidate=3600")
             self.send_header("Access-Control-Allow-Origin", "*")
             self.end_headers()
             self.wfile.write(body)
