@@ -581,8 +581,9 @@ const ESPN_COMP = {
 const SPURS_LEAGUES   = ['eng.1', 'uefa.champions', 'uefa.europa', 'eng.fa', 'eng.league_cup'];
 const WREXHAM_LEAGUES = ['eng.2', 'eng.fa', 'eng.league_cup'];
 
-// Leagues used to build the top-6 standings set
+// Leagues used to build the top-N standings set, with per-league cutoffs
 const TOP6_STANDING_LEAGUES = ['eng.1', 'eng.2', 'esp.1', 'ger.1', 'ita.1', 'fra.1'];
+const LEAGUE_TOP_N = { 'eng.1': 6, 'eng.2': 6 }; // others default to 4
 // Leagues to scan for top-6 fixture clashes (domestic + euro)
 const TOP6_FIXTURE_LEAGUES  = [...TOP6_STANDING_LEAGUES, 'uefa.champions', 'uefa.europa'];
 
@@ -737,7 +738,8 @@ async function loadTopMatches() {
       if (r.status !== 'fulfilled') continue;
       const { league, d } = r.value;
       const entries = d?.children?.[0]?.standings?.entries ?? [];
-      entries.slice(0, 6).forEach((entry, i) => {
+      const topN = LEAGUE_TOP_N[league] ?? 4;
+      entries.slice(0, topN).forEach((entry, i) => {
         top6.set(entry.team.id, { position: i + 1, leagueSlug: league });
       });
     }
