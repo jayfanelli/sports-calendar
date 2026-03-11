@@ -49,17 +49,18 @@ class handler(BaseHTTPRequestHandler):
     def do_GET(self):
         try:
             # ── 1. Fetch standings for all domestic leagues concurrently ──────
+            # max_workers=3 avoids a burst that would exhaust the API rate limit
             top_teams = {}  # team_id -> {position, leagueCode, leagueLabel}
-            with ThreadPoolExecutor(max_workers=len(LEAGUES)) as ex:
+            with ThreadPoolExecutor(max_workers=3) as ex:
                 for _, teams in ex.map(fetch_standings, LEAGUES):
                     top_teams.update(teams)
 
             top_ids = set(top_teams.keys())
 
             # ── 2. Fetch scheduled matches for all comps concurrently ─────────
-            all_comps   = LEAGUES + EURO_COMPS
+            all_comps    = LEAGUES + EURO_COMPS
             comp_results = []
-            with ThreadPoolExecutor(max_workers=len(all_comps)) as ex:
+            with ThreadPoolExecutor(max_workers=3) as ex:
                 comp_results = list(ex.map(fetch_matches, all_comps))
 
             # Process domestic leagues first so euro-comp dupes get dropped

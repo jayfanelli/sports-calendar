@@ -589,13 +589,19 @@ async function init() {
     loadF1(),
     loadTeamFixtures(73, 'spurs'),
     loadWrexham(),
-    loadTopMatches(),
   ]);
 
-  deduplicateTopMatches();
   setLoading(false);
   updateStats();
   render();
+
+  // Top matches loads after team fixtures to avoid exhausting the API rate limit.
+  // Re-renders silently when ready.
+  loadTopMatches().then(() => {
+    deduplicateTopMatches();
+    updateStats();
+    render();
+  });
 
   document.getElementById('last-updated').textContent =
     'Updated ' + new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
