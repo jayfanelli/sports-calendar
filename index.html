@@ -563,21 +563,39 @@ function updateThemeBtn() {
 let allEvents = [];
 let activeFilter = 'all';
 
-// ─── Competition map ──────────────────────────────────────────────────────────
-const COMP_MAP = {
-  'PL':   { badge: 'pl',    label: 'Premier League',   filter: 'pl' },
-  'CL':   { badge: 'ucl',   label: 'Champions League', filter: 'ucl' },
-  'FAC':  { badge: 'fa',    label: 'FA Cup',           filter: 'fa' },
-  'ELC':  { badge: 'champ', label: 'Championship',     filter: 'champ' },
-  'FL1':  { badge: 'champ', label: 'League One',       filter: 'champ' },
-  'FL2':  { badge: 'champ', label: 'League Two',       filter: 'champ' },
-  'EFL':  { badge: 'eflc',  label: 'Carabao Cup',      filter: 'eflc' },
-  'UEL':  { badge: 'ucl',   label: 'Europa League',    filter: 'ucl' },
-  'UECL': { badge: 'ucl',   label: 'Conference League',filter: 'ucl' },
-  'PD':   { badge: 'liga',  label: 'La Liga',          filter: 'liga' },
-  'BL1':  { badge: 'bl',    label: 'Bundesliga',       filter: 'bl' },
-  'SA':   { badge: 'sa',    label: 'Serie A',          filter: 'sa' },
+// ─── ESPN competition map ─────────────────────────────────────────────────────
+const ESPN_COMP = {
+  'eng.1':          { badge: 'pl',    label: 'Premier League',    filter: 'pl',    abbr: 'PL' },
+  'eng.2':          { badge: 'champ', label: 'Championship',      filter: 'champ', abbr: 'Champ' },
+  'eng.fa':         { badge: 'fa',    label: 'FA Cup',            filter: 'fa',    abbr: 'FA' },
+  'eng.league_cup': { badge: 'eflc',  label: 'Carabao Cup',       filter: 'eflc',  abbr: 'CC' },
+  'uefa.champions': { badge: 'ucl',   label: 'Champions League',  filter: 'ucl',   abbr: 'UCL' },
+  'uefa.europa':    { badge: 'ucl',   label: 'Europa League',     filter: 'ucl',   abbr: 'UEL' },
+  'esp.1':          { badge: 'liga',  label: 'La Liga',           filter: 'liga',  abbr: 'La Liga' },
+  'ger.1':          { badge: 'bl',    label: 'Bundesliga',        filter: 'bl',    abbr: 'BL' },
+  'ita.1':          { badge: 'sa',    label: 'Serie A',           filter: 'sa',    abbr: 'SA' },
+  'fra.1':          { badge: 'l1',    label: 'Ligue 1',           filter: 'l1',    abbr: 'L1' },
 };
+
+// Leagues + competitions to scan for each followed team
+const SPURS_LEAGUES   = ['eng.1', 'uefa.champions', 'uefa.europa', 'eng.fa', 'eng.league_cup'];
+const WREXHAM_LEAGUES = ['eng.2', 'eng.fa', 'eng.league_cup'];
+
+// Leagues used to build the top-6 standings set
+const TOP6_STANDING_LEAGUES = ['eng.1', 'eng.2', 'esp.1', 'ger.1', 'ita.1', 'fra.1'];
+// Leagues to scan for top-6 fixture clashes (domestic + euro)
+const TOP6_FIXTURE_LEAGUES  = [...TOP6_STANDING_LEAGUES, 'uefa.champions', 'uefa.europa'];
+
+function espnSeason() {
+  const now = new Date();
+  return now.getMonth() >= 7 ? now.getFullYear() : now.getFullYear() - 1;
+}
+
+function espnDateRange(daysAhead = 180) {
+  const pad = n => String(n).padStart(2, '0');
+  const fmt = d => `${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}`;
+  return `${fmt(new Date())}-${fmt(new Date(Date.now() + daysAhead * 86400000))}`;
+}
 
 // ─── Boot ─────────────────────────────────────────────────────────────────────
 async function init() {
@@ -585,23 +603,18 @@ async function init() {
   clearNotices();
   setLoading(true);
 
+  // ESPN has no rate limits — load everything concurrently
   await Promise.allSettled([
     loadF1(),
-    loadTeamFixtures(47, 'spurs'),
-    loadTeamFixtures(2381, 'wrexham'),
+    loadTeamFixtures('spurs',   367, SPURS_LEAGUES),
+    loadTeamFixtures('wrexham', 352, WREXHAM_LEAGUES),
+    loadTopMatches(),
   ]);
 
+  deduplicateTopMatches();
   setLoading(false);
   updateStats();
   render();
-
-  // Top matches loads after team fixtures to avoid exhausting the API rate limit.
-  // Re-renders silently when ready.
-  loadTopMatches().then(() => {
-    deduplicateTopMatches();
-    updateStats();
-    render();
-  });
 
   document.getElementById('last-updated').textContent =
     'Updated ' + new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
@@ -656,77 +669,131 @@ async function loadF1() {
   }
 }
 
-// ─── Football ─────────────────────────────────────────────────────────────────
-async function loadTeamFixtures(teamId, sportKey) {
-  const label = sportKey === 'spurs' ? 'Tottenham' : 'Wrexham';
-  const shortName = sportKey === 'spurs' ? 'Tottenham' : 'Wrexham';
+// ─── Football (ESPN) ──────────────────────────────────────────────────────────
+async function loadTeamFixtures(sportKey, espnTeamId, leagues) {
+  const name = sportKey === 'spurs' ? 'Tottenham' : 'Wrexham';
+  const teamIdStr = String(espnTeamId);
   try {
-    const res = await fetch(`/api/team?id=${teamId}`);
-    if (res.status === 401 || res.status === 403) {
-      addNotice('error', 'Football API key is invalid or missing on the server.');
-      return;
-    }
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-    const matches = data.matches ?? [];
+    const range = espnDateRange(180);
+    const seen  = new Set();
+    const events = [];
 
-    const events = matches.map(m => {
-      const comp = COMP_MAP[m.competition.code] ??
-        { badge: 'other', label: m.competition.name, filter: 'other' };
-      const isHome = m.homeTeam?.id === teamId;
-      const opp = isHome ? m.awayTeam?.name : m.homeTeam?.name;
-      const title = isHome ? `${shortName} vs ${opp}` : `${opp} vs ${shortName}`;
+    await Promise.allSettled(leagues.map(async league => {
+      const res = await fetch(
+        `https://site.api.espn.com/apis/site/v2/sports/soccer/${league}/scoreboard?dates=${range}&limit=200`
+      );
+      if (!res.ok) return;
+      const data = await res.json();
+      for (const event of data.events ?? []) {
+        if (seen.has(event.id)) continue;
+        const comp        = event.competitions?.[0];
+        const competitors = comp?.competitors ?? [];
+        if (!competitors.some(c => c.team.id === teamIdStr)) continue;
+        seen.add(event.id);
 
-      return {
-        id: `${sportKey}-${m.id}`,
-        sport: sportKey,
-        sessionType: 'match',
-        competitionFilter: comp.filter,
-        title,
-        subtitle: `${comp.label} · ${isHome ? 'Home' : 'Away'}`,
-        badge: comp.badge,
-        badgeLabel: comp.label,
-        date: new Date(m.utcDate),
-        hasTime: true
-      };
-    });
+        const home   = competitors.find(c => c.homeAway === 'home');
+        const away   = competitors.find(c => c.homeAway === 'away');
+        const isHome = home?.team.id === teamIdStr;
+        const opp    = isHome ? away?.team.displayName : home?.team.displayName;
+        const ci     = ESPN_COMP[league] ?? { badge: 'other', label: league, filter: 'other' };
+
+        events.push({
+          id:                `${sportKey}-${event.id}`,
+          sport:             sportKey,
+          sessionType:       'match',
+          competitionFilter: ci.filter,
+          title:             isHome ? `${name} vs ${opp}` : `${opp} vs ${name}`,
+          subtitle:          `${ci.label} · ${isHome ? 'Home' : 'Away'}`,
+          badge:             ci.badge,
+          badgeLabel:        ci.label,
+          date:              new Date(event.date),
+          hasTime:           !event.date.endsWith('T00:00Z'),
+        });
+      }
+    }));
 
     allEvents = [...allEvents.filter(e => e.sport !== sportKey), ...events];
   } catch (err) {
-    addNotice('error', `${label} fixtures failed to load: ${err.message}`);
+    addNotice('error', `${name} fixtures failed to load: ${err.message}`);
   }
 }
 
-// ─── Top Matches ──────────────────────────────────────────────────────────────
+// ─── Top Matches (ESPN) ───────────────────────────────────────────────────────
 async function loadTopMatches() {
   try {
-    const res = await fetch('/api/top-matches');
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-    const matches = data.matches ?? [];
+    const season = espnSeason();
 
-    const events = matches.map(m => {
-      const comp     = COMP_MAP[m.competition] ?? { badge: 'other', label: m.competitionLabel };
-      const hPos     = m.homeTeam.position;
-      const aPos     = m.awayTeam.position;
-      const isCross  = m.homeTeam.leagueCode !== m.awayTeam.leagueCode;
-      const posStr   = isCross
-        ? `${m.homeTeam.leagueCode} #${hPos} vs ${m.awayTeam.leagueCode} #${aPos}`
-        : `#${hPos} vs #${aPos}`;
+    // 1. Fetch all domestic standings in parallel
+    const standingRes = await Promise.allSettled(
+      TOP6_STANDING_LEAGUES.map(league =>
+        fetch(`https://site.web.api.espn.com/apis/v2/sports/soccer/${league}/standings?season=${season}`)
+          .then(r => r.json()).then(d => ({ league, d }))
+      )
+    );
 
-      return {
-        id:                `top6-${m.id}`,
-        sport:             'top6',
-        sessionType:       'match',
-        competitionFilter: comp.filter ?? m.competition.toLowerCase(),
-        title:             `${m.homeTeam.name} vs ${m.awayTeam.name}`,
-        subtitle:          `${m.competitionLabel} · ${posStr}`,
-        badge:             comp.badge,
-        badgeLabel:        m.competitionLabel,
-        date:              new Date(m.utcDate),
-        hasTime:           true,
-      };
-    });
+    // Build top-6 map: espnTeamId -> { position, leagueSlug }
+    const top6 = new Map();
+    for (const r of standingRes) {
+      if (r.status !== 'fulfilled') continue;
+      const { league, d } = r.value;
+      const entries = d?.children?.[0]?.standings?.entries ?? [];
+      entries.slice(0, 6).forEach((entry, i) => {
+        top6.set(entry.team.id, { position: i + 1, leagueSlug: league });
+      });
+    }
+
+    // 2. Fetch fixtures for all relevant leagues + euro comps in parallel
+    const range = espnDateRange(90);
+    const fixtureRes = await Promise.allSettled(
+      TOP6_FIXTURE_LEAGUES.map(league =>
+        fetch(`https://site.api.espn.com/apis/site/v2/sports/soccer/${league}/scoreboard?dates=${range}&limit=200`)
+          .then(r => r.json()).then(d => ({ league, events: d.events ?? [] }))
+      )
+    );
+
+    // 3. Filter to top-6 vs top-6 clashes
+    const events = [];
+    const seen   = new Set();
+
+    for (const r of fixtureRes) {
+      if (r.status !== 'fulfilled') continue;
+      const { league, events: leagueEvents } = r.value;
+      const ci = ESPN_COMP[league] ?? { badge: 'other', label: league, filter: 'other', abbr: league };
+
+      for (const event of leagueEvents) {
+        if (seen.has(event.id)) continue;
+        const comp        = event.competitions?.[0];
+        const competitors = comp?.competitors ?? [];
+        const home = competitors.find(c => c.homeAway === 'home');
+        const away = competitors.find(c => c.homeAway === 'away');
+        if (!home || !away) continue;
+
+        const htInfo = top6.get(home.team.id);
+        const atInfo = top6.get(away.team.id);
+        if (!htInfo || !atInfo) continue;
+
+        seen.add(event.id);
+        const isCross = htInfo.leagueSlug !== atInfo.leagueSlug;
+        const hAbbr   = ESPN_COMP[htInfo.leagueSlug]?.abbr ?? htInfo.leagueSlug;
+        const aAbbr   = ESPN_COMP[atInfo.leagueSlug]?.abbr ?? atInfo.leagueSlug;
+        const posStr  = isCross
+          ? `${hAbbr} #${htInfo.position} vs ${aAbbr} #${atInfo.position}`
+          : `#${htInfo.position} vs #${atInfo.position}`;
+
+        events.push({
+          id:                `top6-${event.id}`,
+          sport:             'top6',
+          sessionType:       'match',
+          competitionFilter: ci.filter,
+          title:             `${home.team.displayName} vs ${away.team.displayName}`,
+          subtitle:          `${ci.label} · ${posStr}`,
+          badge:             ci.badge,
+          badgeLabel:        ci.label,
+          date:              new Date(event.date),
+          hasTime:           !event.date.endsWith('T00:00Z'),
+        });
+      }
+    }
 
     allEvents = [...allEvents.filter(e => e.sport !== 'top6'), ...events];
   } catch (err) {
@@ -735,7 +802,7 @@ async function loadTopMatches() {
 }
 
 // If a top-6 clash also involves one of your teams, tag the team event instead
-// of keeping a duplicate in allEvents. Both sources now use API-Football so
+// of keeping a duplicate in allEvents. Both sources use ESPN event IDs so
 // fixture IDs match directly.
 function deduplicateTopMatches() {
   const teamMatchMap = new Map();
