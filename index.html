@@ -249,22 +249,6 @@
     main { max-width: 760px; margin: 0 auto; padding: 1.5rem 1.5rem 5rem; }
 
     /* ── Stats Bar ───────────────────────────────────────────── */
-    .stats { display: flex; gap: 1.25rem; margin-bottom: 1.25rem; flex-wrap: wrap; }
-
-    .stat-pill {
-      display: inline-flex;
-      align-items: center;
-      gap: 0.45rem;
-      font-size: 0.75rem;
-      color: var(--text-muted);
-    }
-
-    .stat-dot { width: 7px; height: 7px; border-radius: 50%; }
-    .stat-dot.spurs   { background: #3d6aba; }
-    .stat-dot.wrexham { background: var(--wrexham); }
-    .stat-dot.f1      { background: var(--f1); }
-    .stat-dot.top6    { background: var(--top6); }
-
     /* ── Notices ─────────────────────────────────────────────── */
     .notice {
       border-radius: 8px;
@@ -466,13 +450,6 @@
 <main>
   <div id="notices"></div>
 
-  <div class="stats" id="stats" style="display:none">
-    <div class="stat-pill"><div class="stat-dot spurs"></div><span id="spurs-stat"></span></div>
-    <div class="stat-pill"><div class="stat-dot wrexham"></div><span id="wrexham-stat"></span></div>
-    <div class="stat-pill"><div class="stat-dot f1"></div><span id="f1-stat"></span></div>
-    <div class="stat-pill"><div class="stat-dot top6"></div><span id="top6-stat"></span></div>
-  </div>
-
   <div id="events-container">
     <div class="loading-state"><div class="spinner"></div>Loading schedule…</div>
   </div>
@@ -618,7 +595,6 @@ async function init() {
   deduplicateTopMatches();
   deduplicateCups();
   setLoading(false);
-  updateStats();
   render();
 
   document.getElementById('last-updated').textContent =
@@ -1017,31 +993,6 @@ document.querySelectorAll('.chip').forEach(chip => {
 function setLoading(yes) {
   if (yes) document.getElementById('events-container').innerHTML =
     '<div class="loading-state"><div class="spinner"></div>Loading schedule…</div>';
-}
-
-function updateStats() {
-  const spurs   = allEvents.filter(e => e.sport === 'spurs').length;
-  const wrexham = allEvents.filter(e => e.sport === 'wrexham').length;
-  const f1      = allEvents.filter(e => e.sport === 'f1').length;
-  const top6    = allEvents.filter(e => e.sport === 'top6' || e.isTop6).length;
-  const bar = document.getElementById('stats');
-  if (spurs + wrexham + f1 + top6 === 0) { bar.style.display = 'none'; return; }
-  bar.style.display = 'flex';
-
-  const spursEl   = document.getElementById('spurs-stat');
-  const wrexhamEl = document.getElementById('wrexham-stat');
-  const f1El      = document.getElementById('f1-stat');
-  const top6El    = document.getElementById('top6-stat');
-
-  spursEl.textContent   = spurs   ? `${spurs} Spurs match${spurs   === 1 ? '' : 'es'}` : '';
-  wrexhamEl.textContent = wrexham ? `${wrexham} Wrexham match${wrexham === 1 ? '' : 'es'}` : '';
-  f1El.textContent      = f1      ? `${f1} F1 session${f1 === 1 ? '' : 's'}` : '';
-  top6El.textContent    = top6    ? `${top6} top match${top6 === 1 ? '' : 'es'}` : '';
-
-  spursEl.closest('.stat-pill').style.display   = spurs   ? '' : 'none';
-  wrexhamEl.closest('.stat-pill').style.display = wrexham ? '' : 'none';
-  f1El.closest('.stat-pill').style.display      = f1      ? '' : 'none';
-  top6El.closest('.stat-pill').style.display    = top6    ? '' : 'none';
 }
 
 function addNotice(type, msg) {
