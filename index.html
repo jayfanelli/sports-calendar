@@ -612,9 +612,11 @@ async function init() {
     loadTeamFixtures('spurs',   367, SPURS_LEAGUES),
     loadTeamFixtures('wrexham', 352, WREXHAM_LEAGUES),
     loadTopMatches(),
+    loadCupFixtures(),
   ]);
 
   deduplicateTopMatches();
+  deduplicateCups();
   setLoading(false);
   updateStats();
   render();
@@ -719,6 +721,67 @@ async function loadTeamFixtures(sportKey, espnTeamId, leagues) {
   } catch (err) {
     addNotice('error', `${name} fixtures failed to load: ${err.message}`);
   }
+}
+
+// ─── FA Cup + Carabao Cup (ESPN) ──────────────────────────────────────────────
+async function loadCupFixtures() {
+  const CUP_LEAGUES = ['eng.fa', 'eng.league_cup'];
+  try {
+    const range  = espnDateRange(180);
+    const seen   = new Set();
+    const events = [];
+
+    await Promise.allSettled(CUP_LEAGUES.map(async league => {
+      const res = await fetch(
+        `https://site.api.espn.com/apis/site/v2/sports/soccer/${league}/scoreboard?dates=${range}&limit=200`
+      );
+      if (!res.ok) return;
+      const data = await res.json();
+      const ci   = ESPN_COMP[league];
+
+      for (const event of data.events ?? []) {
+        if (seen.has(event.id)) continue;
+        seen.add(event.id);
+
+        const comp        = event.competitions?.[0];
+        const competitors = comp?.competitors ?? [];
+        const home = competitors.find(c => c.homeAway === 'home');
+        const away = competitors.find(c => c.homeAway === 'away');
+        if (!home || !away) continue;
+
+        events.push({
+          id:                `cups-${event.id}`,
+          sport:             'cups',
+          sessionType:       'match',
+          competitionFilter: ci.filter,
+          title:             `${home.team.displayName} vs ${away.team.displayName}`,
+          subtitle:          ci.label,
+          badge:             ci.badge,
+          badgeLabel:        ci.label,
+          date:              new Date(event.date),
+          hasTime:           !event.date.endsWith('T00:00Z'),
+        });
+      }
+    }));
+
+    allEvents = [...allEvents.filter(e => e.sport !== 'cups'), ...events];
+  } catch (err) {
+    addNotice('error', `Cup fixtures failed to load: ${err.message}`);
+  }
+}
+
+// Drop cup events that are already represented by a Spurs/Wrexham team event
+function deduplicateCups() {
+  const teamEspnIds = new Set();
+  allEvents.forEach(e => {
+    if (e.sport === 'spurs' || e.sport === 'wrexham') {
+      teamEspnIds.add(e.id.split('-').slice(1).join('-'));
+    }
+  });
+  allEvents = allEvents.filter(e => {
+    if (e.sport !== 'cups') return true;
+    return !teamEspnIds.has(e.id.split('-').slice(1).join('-'));
+  });
 }
 
 // ─── Top Matches (ESPN) ───────────────────────────────────────────────────────
